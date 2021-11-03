@@ -1,0 +1,69 @@
+kind: pipeline
+type: kubernetes
+name: luma-service
+steps:
+- name: Artifact-Authenticate
+  image: robertstettner/drone-mvn-auth
+  settings:
+    # servers:
+    #   from_secret: maven_servers # This has to be stored in the drone repo secrets in the yaml format like so: [{"id": "central","username":"drone","password":"password"}, {"id": "snapshots","username":"drone","password":"password"}] https://github.com/robertstettner/drone-mvn-auth/issues/3#issuecomment-604727385
+    servers:
+      - id: luma-libs
+        username: $${env.CODEARTIFACT_AUTH_ID}
+        password: $${CODEARTIFACT_AUTH_TOKEN}
+    profiles:
+      - id: luma-libs
+        repositories:
+          - id: luma-libs
+            url: https://luma-473878057563.d.codeartifact.us-east-1.amazonaws.com/maven/libs
+            layout: default
+        plugin_repositories:
+          - id: luma-libs
+            url: https://luma-473878057563.d.codeartifact.us-east-1.amazonaws.com/maven/libs
+    active_profiles:
+      - luma-libs
+  when:
+    event:
+      exclude:
+      - tag
+- name: Maven-Build
+  image: maven:3-amazoncorretto-11
+  environment:
+    aws_id:
+      from_secret: aws_id
+    aws_secret:
+      from_secret: aws_secret
+  commands:
+  - yum install unzip -y
+  - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  - unzip awscliv2.zip
+  - ./aws/install
+  - aws configure set aws_access_key_id $aws_id
+  - aws configure set aws_secret_access_key $aws_secret
+  - aws configure set default.region us-east-1
+  - export CODEARTIFACT_AUTH_ID="$aws_id"
+  - export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token --domain luma --domain-owner 473878057563 --query authorizationToken --output text)
+  - mvn -s settings.xml package
+  - yum install libxml2 -y
+  - SERVICE_VERSION=$(xmllint --xpath '/*[local-name()="project"]/*[local-name()="version"]/text()' pom.xml)
+  - SERVICE_NAME=$(xmllint --xpath '/*[local-name()="project"]/*[local-name()="artifactId"]/text()' pom.xml)
+  - export SHORT_COMMIT=$(echo "$DRONE_COMMIT" | cut -c1-7)
+  - echo "$DRONE_BRANCH-$SHORT_COMMIT" >> .tags
+  - find target/ -name "$SERVICE_NAME-$SERVICE_VERSION.jar" -and ! -name "*sources.jar" -exec cp '{}' target/app.jar \;
+  when:
+    event:
+      exclude:
+      - tag
+- name: Build-Upload-Container 
+  image: plugins/ecr
+  settings:
+    access_key:
+      from_secret: aws_id # these are the titles of the secrets directly
+    secret_key:
+      from_secret: aws_secret # these are the titles of the secrets directly
+    registry: 473878057563.dkr.ecr.us-east-1.amazonaws.com
+    repo: luma-service
+  when:
+    event:
+      exclude:
+      - tag

@@ -1,0 +1,4 @@
+#Codeowners 
+#Mandatory Reviews for DevOps
+.drone.yml      @atlastradepro/devops
+CODEOWNERS      @atlastradepro/devops
