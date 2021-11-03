@@ -1,6 +1,6 @@
 kind: pipeline
 type: kubernetes
-name: luma-service
+name: company-core--service
 steps:
 - name: Artifact-Authenticate
   image: robertstettner/drone-mvn-auth
@@ -62,7 +62,7 @@ steps:
     secret_key:
       from_secret: aws_secret # these are the titles of the secrets directly
     registry: 473878057563.dkr.ecr.us-east-1.amazonaws.com
-    repo: luma-service
+    repo: company-core--service
   when:
     event:
       exclude:
